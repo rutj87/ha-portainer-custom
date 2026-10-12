@@ -1,10 +1,8 @@
 """Test the Portainer config flow and options flow."""
 
-from unittest.mock import patch
-import pytest
-
 from homeassistant import config_entries
 from homeassistant.const import CONF_URL, CONF_VERIFY_SSL
+import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.portainer.const import (

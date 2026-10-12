@@ -1,9 +1,9 @@
 """Fixtures for Portainer tests."""
 
 from unittest.mock import AsyncMock, patch
-import pytest
 
 from pyportainer.models.portainer import Endpoint, SystemStatus
+import pytest
 
 pytest_plugins = ["pytest_homeassistant_custom_component"]
 

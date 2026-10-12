@@ -1,9 +1,9 @@
 """Test unique ID scoping and automatic legacy entity cleanup."""
 
 from unittest.mock import MagicMock
-import pytest
 
 from homeassistant.helpers import entity_registry as er
+import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.portainer import async_cleanup_excluded_entities
