@@ -66,4 +66,4 @@ jobs:
           uv pip install --system pyportainer pytest-homeassistant-custom-component
       - name: Run Pytest
         run: |
-          pytest -v tests/
+          python -m pytest -v tests/
