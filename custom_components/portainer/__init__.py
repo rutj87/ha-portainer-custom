@@ -182,9 +182,19 @@ def async_cleanup_excluded_entities(
     coordinator = entry.runtime_data
     valid_endpoint_ids = {str(ep_id) for ep_id in coordinator.data}
 
+    removed_legacy_ids: set[str] = set()
+
     # 1. Clean up entities
     entities = er.async_entries_for_config_entry(entity_registry, entry.entry_id)
     for entity in entities:
+        # Purge legacy v1.0.0 entities that lack endpoint_id in unique_id
+        # Valid format: {entry_id}_{endpoint_id}_... where parts[1] is a digit
+        parts = entity.unique_id.split("_")
+        if len(parts) >= 2 and not parts[1].isdigit():
+            removed_legacy_ids.add(entity.entity_id)
+            entity_registry.async_remove(entity.entity_id)
+            continue
+
         # Check volume entities
         if not enable_volumes and (
             "_volume_" in entity.unique_id
@@ -228,6 +238,19 @@ def async_cleanup_excluded_entities(
             ):
                 entity_registry.async_remove(entity.entity_id)
                 continue
+
+    # Restore clean entity IDs by removing the _2 suffix caused by the legacy collisions
+    if removed_legacy_ids:
+        remaining_entities = er.async_entries_for_config_entry(
+            entity_registry, entry.entry_id
+        )
+        for entity in remaining_entities:
+            if entity.entity_id.endswith("_2"):
+                clean_id = entity.entity_id[:-2]
+                if clean_id in removed_legacy_ids and not entity_registry.async_get(clean_id):
+                    entity_registry.async_update_entity(
+                        entity.entity_id, new_entity_id=clean_id
+                    )
 
     # 2. Clean up devices
     devices = dr.async_entries_for_config_entry(device_registry, entry.entry_id)
