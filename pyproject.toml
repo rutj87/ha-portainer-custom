@@ -7,7 +7,6 @@ select = [
     "E",   # pycodestyle errors
     "W",   # pycodestyle warnings
     "F",   # pyflakes
-    "UP",  # pyupgrade
 ]
 ignore = [
     "E501",  # line length handled by formatter
