@@ -51,10 +51,15 @@ async def test_legacy_entity_cleanup_and_name_restoration(hass):
     # Run cleanup
     async_cleanup_excluded_entities(hass, entry)
 
-    # Verify legacy entity was purged
-    assert entity_registry.async_get(legacy_entity.entity_id) is None
+    # Verify legacy un-scoped entity was purged from the registry
+    assert (
+        entity_registry.async_get_entity_id(
+            "binary_sensor", DOMAIN, f"{entry.entry_id}_omada-controller_status"
+        )
+        is None
+    )
 
-    # Verify new entity was renamed to the clean original name
+    # Verify new entity reclaimed the clean original entity_id
     restored = entity_registry.async_get_entity_id(
         "binary_sensor", DOMAIN, f"{entry.entry_id}_7_omada-controller_status"
     )
