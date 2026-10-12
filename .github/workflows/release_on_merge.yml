@@ -60,9 +60,12 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add custom_components/portainer/manifest.json
-          git commit -m "chore(release): bump version to ${NEXT_TAG} [skip ci]"
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(release): bump version to ${NEXT_TAG} [skip ci]"
+            git push origin main
+          fi
           git tag -a "${NEXT_TAG}" -m "Release ${NEXT_TAG}"
-          git push origin main --tags
+          git push origin "${NEXT_TAG}"
 
       - name: Create GitHub Release
         env:
@@ -71,4 +74,4 @@ jobs:
           NEXT_TAG="${{ steps.next_version.outputs.tag }}"
           gh release create "${NEXT_TAG}" \
             --title "${NEXT_TAG}" \
-            --generate-notes
+            --generate-notes || true
