@@ -370,6 +370,12 @@ async def async_remove_config_entry_device(
     )
 
     valid_identifiers.update(
+        (DOMAIN, f"{entry.entry_id}_{endpoint_id}_{container_name}")
+        for endpoint_id, endpoint in coordinator.data.items()
+        for container_name in endpoint.containers
+    )
+
+    valid_identifiers.update(
         (DOMAIN, f"{entry.entry_id}_{container_name}")
         for endpoint in coordinator.data.values()
         for container_name in endpoint.containers

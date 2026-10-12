@@ -9,5 +9,5 @@
   "loggers": ["pyportainer"],
   "quality_scale": "platinum",
   "requirements": ["pyportainer==1.0.47"],
-  "version": "1.0.0"
+  "version": "1.0.1"
 }

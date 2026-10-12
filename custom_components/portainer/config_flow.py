@@ -85,6 +85,10 @@ class PortainerConfigFlow(ConfigFlow, domain=DOMAIN):
 
     VERSION = 5
 
+    def __init__(self) -> None:
+        """Initialize config flow."""
+        self._init_data: dict[str, Any] = {}
+
     @override
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -106,12 +110,75 @@ class PortainerConfigFlow(ConfigFlow, domain=DOMAIN):
             else:
                 await self.async_set_unique_id(system_status.instance_id)
                 self._abort_if_unique_id_configured()
-                return self.async_create_entry(
-                    title=user_input[CONF_URL], data=user_input
-                )
+                self._init_data = user_input
+                return await self.async_step_options()
 
         return self.async_show_form(
             step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
+        )
+
+    async def async_step_options(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Prompt for options during initial setup."""
+        if user_input is not None:
+            return self.async_create_entry(
+                title=self._init_data[CONF_URL],
+                data=self._init_data,
+                options=user_input,
+            )
+
+        client = Portainer(
+            api_url=self._init_data[CONF_URL],
+            api_key=self._init_data[CONF_API_TOKEN],
+            session=async_get_clientsession(
+                hass=self.hass, verify_ssl=self._init_data[CONF_VERIFY_SSL]
+            ),
+        )
+        endpoint_options: list[SelectOptionDict] = []
+        try:
+            endpoints = await client.get_endpoints()
+            for ep in endpoints:
+                endpoint_options.append(
+                    SelectOptionDict(
+                        value=str(ep.id),
+                        label=f"{ep.name} (ID: {ep.id})",
+                    )
+                )
+        except Exception as err:
+            _LOGGER.warning("Could not fetch endpoints during setup: %s", err)
+
+        all_endpoint_ids = [opt["value"] for opt in endpoint_options]
+        schema_dict: dict[Any, Any] = {}
+        if endpoint_options:
+            schema_dict[
+                probatio.Optional(
+                    CONF_ENDPOINTS,
+                    default=all_endpoint_ids,
+                )
+            ] = SelectSelector(
+                SelectSelectorConfig(
+                    options=endpoint_options,
+                    multiple=True,
+                    mode=SelectSelectorMode.LIST,
+                )
+            )
+
+        schema_dict.update(
+            {
+                probatio.Optional(CONF_ENABLE_VOLUMES, default=False): BooleanSelector(),
+                probatio.Optional(CONF_ENABLE_UPDATES, default=False): BooleanSelector(),
+                probatio.Optional(
+                    CONF_ENABLE_CONTAINER_SENSORS, default=True
+                ): BooleanSelector(),
+                probatio.Optional(CONF_ENABLE_BUTTONS, default=True): BooleanSelector(),
+                probatio.Optional(CONF_ENABLE_SWITCHES, default=True): BooleanSelector(),
+            }
+        )
+
+        return self.async_show_form(
+            step_id="options",
+            data_schema=probatio.Schema(schema_dict),
         )
 
     async def async_step_reauth(
@@ -217,15 +284,11 @@ class PortainerConfigFlow(ConfigFlow, domain=DOMAIN):
     @callback
     def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
         """Get the options flow for this handler."""
-        return PortainerOptionsFlowHandler(config_entry)
+        return PortainerOptionsFlowHandler()
 
 
 class PortainerOptionsFlowHandler(OptionsFlow):
     """Handle options flow for Portainer."""
-
-    def __init__(self, config_entry: ConfigEntry) -> None:
-        """Initialize options flow."""
-        self.config_entry = config_entry
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -251,7 +314,30 @@ class PortainerOptionsFlowHandler(OptionsFlow):
                     "Could not fetch Portainer endpoints for options flow: %s", err
                 )
 
-        # Fallback if endpoints couldn't be fetched live via API
+        # Fallback if endpoints couldn't be fetched live via coordinator
+        if not endpoint_options and self.config_entry:
+            try:
+                client = Portainer(
+                    api_url=self.config_entry.data[CONF_URL],
+                    api_key=self.config_entry.data[CONF_API_TOKEN],
+                    session=async_get_clientsession(
+                        hass=self.hass,
+                        verify_ssl=self.config_entry.data.get(CONF_VERIFY_SSL, True),
+                    ),
+                )
+                endpoints = await client.get_endpoints()
+                for ep in endpoints:
+                    endpoint_options.append(
+                        SelectOptionDict(
+                            value=str(ep.id),
+                            label=f"{ep.name} (ID: {ep.id})",
+                        )
+                    )
+            except Exception as err:
+                _LOGGER.warning(
+                    "Could not fetch Portainer endpoints via fallback client: %s", err
+                )
+
         if not endpoint_options and coordinator and getattr(coordinator, "data", None):
             for ep_id, ep_data in coordinator.data.items():
                 name = ep_data.name or f"Endpoint {ep_id}"
@@ -260,9 +346,13 @@ class PortainerOptionsFlowHandler(OptionsFlow):
                 )
 
         all_endpoint_ids = [opt["value"] for opt in endpoint_options]
-        current_endpoints = self.config_entry.options.get(
-            CONF_ENDPOINTS, all_endpoint_ids
-        )
+        raw_saved_endpoints = self.config_entry.options.get(CONF_ENDPOINTS)
+        if raw_saved_endpoints is not None:
+            current_endpoints = [
+                str(ep) for ep in raw_saved_endpoints if str(ep) in all_endpoint_ids
+            ]
+        else:
+            current_endpoints = all_endpoint_ids
 
         schema_dict: dict[Any, Any] = {}
         if endpoint_options:
