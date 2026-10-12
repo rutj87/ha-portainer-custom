@@ -15,5 +15,5 @@
   "requirements": [
     "pyportainer>=1.0.47"
   ],
-  "version": "1.0.3"
+  "version": "1.0.4"
 }
