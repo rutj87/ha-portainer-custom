@@ -2,8 +2,8 @@
 
 from unittest.mock import AsyncMock, patch
 
-from pyportainer.models.portainer import Endpoint, SystemStatus
 import pytest
+from pyportainer.models.portainer import Endpoint, SystemStatus
 
 pytest_plugins = ["pytest_homeassistant_custom_component"]
 
