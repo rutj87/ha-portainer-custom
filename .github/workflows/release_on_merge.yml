@@ -49,8 +49,10 @@ jobs:
           with open(path) as f:
               data = json.load(f)
           data['version'] = '$NEXT_VERSION'
+          order = ['domain', 'name'] + sorted([k for k in data if k not in ('domain', 'name')])
+          sorted_data = {k: data[k] for k in order}
           with open(path, 'w') as f:
-              json.dump(data, f, indent=2)
+              json.dump(sorted_data, f, indent=2)
               f.write('\n')
           "
 

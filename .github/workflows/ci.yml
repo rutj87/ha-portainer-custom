@@ -28,7 +28,7 @@ jobs:
         uses: hacs/action@main
         with:
           category: integration
-          ignore: "brands,topics,license"
+          ignore: "brands topics"
 
   lint:
     name: Lint & Static Analysis
@@ -62,8 +62,8 @@ jobs:
           python-version: "3.12"
       - name: Install Test Dependencies
         run: |
-          python -m pip install --upgrade pip setuptools wheel
-          pip install pyportainer pytest pytest-asyncio pytest-homeassistant-custom-component
+          python -m pip install --upgrade pip
+          pip install --prefer-binary pytest-homeassistant-custom-component pyportainer
       - name: Run Pytest
         run: |
           pytest -v tests/
