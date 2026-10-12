@@ -1,0 +1,74 @@
+name: Release on Merge
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'custom_components/portainer/**'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: "!contains(github.event.head_commit.message, '[skip ci]') && !startsWith(github.event.head_commit.message, 'chore(release):')"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Calculate Next Version
+        id: next_version
+        run: |
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v1.0.0")
+          echo "Current tag: $LATEST_TAG"
+          VERSION=${LATEST_TAG#v}
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+          NEXT_PATCH=$((PATCH + 1))
+          NEXT_VERSION="${MAJOR}.${MINOR}.${NEXT_PATCH}"
+          NEXT_TAG="v${NEXT_VERSION}"
+          echo "Next version: $NEXT_VERSION"
+          echo "version=$NEXT_VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$NEXT_TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Update manifest.json
+        run: |
+          NEXT_VERSION="${{ steps.next_version.outputs.version }}"
+          python3 -c "
+          import json
+          path = 'custom_components/portainer/manifest.json'
+          with open(path) as f:
+              data = json.load(f)
+          data['version'] = '$NEXT_VERSION'
+          with open(path, 'w') as f:
+              json.dump(data, f, indent=2)
+              f.write('\n')
+          "
+
+      - name: Commit and Tag Release
+        run: |
+          NEXT_TAG="${{ steps.next_version.outputs.tag }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add custom_components/portainer/manifest.json
+          git commit -m "chore(release): bump version to ${NEXT_TAG} [skip ci]"
+          git tag -a "${NEXT_TAG}" -m "Release ${NEXT_TAG}"
+          git push origin main --tags
+
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          NEXT_TAG="${{ steps.next_version.outputs.tag }}"
+          gh release create "${NEXT_TAG}" \
+            --title "${NEXT_TAG}" \
+            --generate-notes
