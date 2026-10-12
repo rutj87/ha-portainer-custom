@@ -3,7 +3,7 @@
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from pyportainer.models.portainer import Endpoint, SystemStatus
+from pyportainer.models.portainer import Endpoint, PortainerSystemStatus
 
 pytest_plugins = ["pytest_homeassistant_custom_component"]
 
@@ -20,7 +20,7 @@ def mock_portainer_client():
     with patch("custom_components.portainer.config_flow.Portainer") as mock_client_cls, \
          patch("custom_components.portainer.Portainer") as mock_init_client_cls:
         client = AsyncMock()
-        client.portainer_system_status.return_value = SystemStatus(
+        client.portainer_system_status.return_value = PortainerSystemStatus(
             instance_id="test-instance-12345",
             version="2.21.0",
         )
