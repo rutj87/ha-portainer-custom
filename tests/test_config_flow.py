@@ -3,11 +3,10 @@
 import pytest
 
 from homeassistant import config_entries
-from homeassistant.const import CONF_URL, CONF_VERIFY_SSL
+from homeassistant.const import CONF_API_TOKEN, CONF_URL, CONF_VERIFY_SSL
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.portainer.const import (
-    CONF_API_TOKEN,
     CONF_ENABLE_BUTTONS,
     CONF_ENABLE_CONTAINER_SENSORS,
     CONF_ENABLE_SWITCHES,
