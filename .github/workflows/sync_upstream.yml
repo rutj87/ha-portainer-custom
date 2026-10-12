@@ -51,7 +51,16 @@ jobs:
           title: "chore(upstream): upstream Home Assistant updates detected"
           body: |
             New changes were detected in the upstream `homeassistant/components/portainer` integration from `home-assistant/core:dev`.
-            
-            Please review the diff against our custom options flow and endpoint/volume filtering logic before merging.
+
+            ### Automated Verification Pipeline
+            This PR automatically runs the CI test suite:
+            - **Hassfest**: Manifest, services, and translation schema validation
+            - **HACS Action**: Integration structure & compatibility
+            - **Ruff & PyCompile**: Static analysis and Python syntax checks
+            - **Pytest**: Integration tests verifying custom options flow, endpoint filtering, and unique ID stability
+
+            **Review the CI status checks below before merging:**
+            - **Passed**: Upstream updates are verified safe and compatible with custom filters.
+            - **Failed**: Upstream updates introduced breaking changes. Inspect logs before merging.
           branch: "upstream-sync"
           delete-branch: true

@@ -1,0 +1,68 @@
+name: CI & Quality Validation
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  hassfest:
+    name: Validate Hassfest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Hassfest validation
+        uses: home-assistant/actions/hassfest@master
+
+  hacs:
+    name: Validate HACS
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: HACS validation
+        uses: hacs/action/validate@main
+        with:
+          category: integration
+
+  lint:
+    name: Lint & Static Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Linting Tools
+        run: |
+          python -m pip install --upgrade pip ruff
+      - name: Run Ruff Linter
+        run: |
+          ruff check custom_components/portainer/ tests/
+      - name: Compile Python Files
+        run: |
+          python -m py_compile custom_components/portainer/*.py
+
+  test:
+    name: Pytest Integration Suite
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Test Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-asyncio pytest-homeassistant-custom-component
+      - name: Run Pytest
+        run: |
+          pytest -v tests/
