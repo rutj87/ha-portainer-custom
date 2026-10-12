@@ -49,6 +49,30 @@
       }
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Portainer Options",
+        "description": "Configure which endpoints and entity types to include in Home Assistant.",
+        "data": {
+          "endpoints": "Endpoints / Servers to monitor",
+          "enable_volumes": "Enable Docker volume entities",
+          "enable_updates": "Enable container image update entities",
+          "enable_container_sensors": "Enable container resource sensors (CPU, Memory)",
+          "enable_buttons": "Enable container control buttons (Restart, Recreate, etc.)",
+          "enable_switches": "Enable container power switches"
+        },
+        "data_description": {
+          "endpoints": "Select which Portainer Docker endpoints/hosts to monitor. Deselecting a host hides all its containers.",
+          "enable_volumes": "Exposes driver and size sensors for every Docker volume (can create hundreds of entities).",
+          "enable_updates": "Exposes image update entities (may trigger unwanted auto-updates).",
+          "enable_container_sensors": "Exposes CPU, Memory, state, and image version sensors for containers.",
+          "enable_buttons": "Exposes buttons to restart, pause, recreate, or kill containers.",
+          "enable_switches": "Exposes switches to start or stop containers."
+        }
+      }
+    }
+  },
   "device": {
     "unknown_container": {
       "name": "Unknown container"

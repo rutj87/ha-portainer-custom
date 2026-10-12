@@ -26,7 +26,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .const import DOMAIN
+from .const import CONF_ENABLE_UPDATES, DOMAIN
 from .coordinator import (
     PortainerConfigEntry,
     PortainerContainerData,
@@ -91,6 +91,9 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up Portainer update entities based on a config entry."""
+    if not entry.options.get(CONF_ENABLE_UPDATES, False):
+        return
+
     coordinator = entry.runtime_data
 
     def _async_add_new_containers(

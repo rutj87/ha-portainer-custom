@@ -26,7 +26,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import PortainerConfigEntry
-from .const import DOMAIN
+from .const import CONF_ENABLE_BUTTONS, DOMAIN
 from .coordinator import (
     PortainerContainerData,
     PortainerCoordinator,
@@ -187,6 +187,9 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up Portainer buttons."""
+    if not entry.options.get(CONF_ENABLE_BUTTONS, True):
+        return
+
     coordinator = entry.runtime_data
 
     def _async_add_new_endpoints(endpoints: list[PortainerCoordinatorData]) -> None:

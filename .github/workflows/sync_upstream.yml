@@ -1,0 +1,57 @@
+name: Upstream Sync
+
+on:
+  schedule:
+    # Run every Sunday at 03:00 UTC
+    - cron: '0 3 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    name: Check & Sync Upstream HA Core Changes
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch Upstream Portainer Files
+        run: |
+          mkdir -p .upstream_tmp
+          curl -s https://api.github.com/repos/home-assistant/core/contents/homeassistant/components/portainer \
+            | jq -r '.[].name' | while read -r file; do
+              echo "Checking $file..."
+              curl -s -f -o ".upstream_tmp/$file" \
+                "https://raw.githubusercontent.com/home-assistant/core/dev/homeassistant/components/portainer/$file"
+            done
+
+      - name: Compare with Upstream
+        id: diff_check
+        run: |
+          # Compare upstream tmp with local files (excluding our custom additions)
+          echo "Comparing upstream files..."
+          # If changes exist, note them
+          CHANGED=$(git diff --no-index .upstream_tmp custom_components/portainer || true)
+          if [ -n "$CHANGED" ]; then
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create Upstream Pull Request
+        if: steps.diff_check.outputs.has_changes == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "chore(upstream): sync latest changes from home-assistant/core"
+          title: "chore(upstream): upstream Home Assistant updates detected"
+          body: |
+            New changes were detected in the upstream `homeassistant/components/portainer` integration from `home-assistant/core:dev`.
+            
+            Please review the diff against our custom options flow and endpoint/volume filtering logic before merging.
+          branch: "upstream-sync"
+          delete-branch: true

@@ -26,7 +26,16 @@ import homeassistant.helpers.entity_registry as er
 from homeassistant.helpers.start import async_at_started
 from homeassistant.helpers.typing import ConfigType
 
-from .const import API_MAX_RETRIES, DOMAIN
+from .const import (
+    API_MAX_RETRIES,
+    CONF_ENABLE_BUTTONS,
+    CONF_ENABLE_CONTAINER_SENSORS,
+    CONF_ENABLE_SWITCHES,
+    CONF_ENABLE_UPDATES,
+    CONF_ENABLE_VOLUMES,
+    CONF_ENDPOINTS,
+    DOMAIN,
+)
 from .coordinator import PortainerCoordinator, PortainerDockerDiskSpaceCoordinator
 from .services import async_setup_services
 
@@ -105,23 +114,30 @@ async def async_setup_entry(hass: HomeAssistant, entry: PortainerConfigEntry) ->
         },
     )
 
+    # Clean up entities and devices excluded by options
+    async_cleanup_excluded_entities(hass, entry)
+
+    # Listen for options changes and reload
+    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
+
     await hass.config_entries.async_forward_entry_setups(entry, _PLATFORMS)
 
-    @callback
-    def _start_watcher(_hass: HomeAssistant) -> None:
-        """Start the image watcher in the event loop."""
-        watcher.start()
+    if entry.options.get(CONF_ENABLE_UPDATES, False):
+        @callback
+        def _start_watcher(_hass: HomeAssistant) -> None:
+            """Start the image watcher in the event loop."""
+            watcher.start()
 
-    @callback
-    def _stop_watcher(_event: Event) -> None:
-        """Stop the image watcher in the event loop."""
-        watcher.stop()
+        @callback
+        def _stop_watcher(_event: Event) -> None:
+            """Stop the image watcher in the event loop."""
+            watcher.stop()
 
-    entry.async_on_unload(async_at_started(hass, _start_watcher))
-    entry.async_on_unload(watcher.stop)
-    entry.async_on_unload(
-        hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, _stop_watcher)
-    )
+        entry.async_on_unload(async_at_started(hass, _start_watcher))
+        entry.async_on_unload(watcher.stop)
+        entry.async_on_unload(
+            hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, _stop_watcher)
+        )
 
     @callback
     def _start_event_listeners(_hass: HomeAssistant) -> None:
@@ -141,6 +157,100 @@ async def async_setup_entry(hass: HomeAssistant, entry: PortainerConfigEntry) ->
     )
 
     return True
+
+
+async def async_reload_entry(hass: HomeAssistant, entry: PortainerConfigEntry) -> None:
+    """Reload config entry when options are updated."""
+    await hass.config_entries.async_reload(entry.entry_id)
+
+
+@callback
+def async_cleanup_excluded_entities(
+    hass: HomeAssistant, entry: PortainerConfigEntry
+) -> None:
+    """Clean up entities and devices excluded by options."""
+    entity_registry = er.async_get(hass)
+    device_registry = dr.async_get(hass)
+
+    enable_volumes = entry.options.get(CONF_ENABLE_VOLUMES, False)
+    enable_updates = entry.options.get(CONF_ENABLE_UPDATES, False)
+    enable_container_sensors = entry.options.get(CONF_ENABLE_CONTAINER_SENSORS, True)
+    enable_buttons = entry.options.get(CONF_ENABLE_BUTTONS, True)
+    enable_switches = entry.options.get(CONF_ENABLE_SWITCHES, True)
+    selected_endpoints = entry.options.get(CONF_ENDPOINTS)
+
+    coordinator = entry.runtime_data
+    valid_endpoint_ids = {str(ep_id) for ep_id in coordinator.data}
+
+    # 1. Clean up entities
+    entities = er.async_entries_for_config_entry(entity_registry, entry.entry_id)
+    for entity in entities:
+        # Check volume entities
+        if not enable_volumes and (
+            "_volume_" in entity.unique_id
+            or entity.entity_id.endswith(("_volume_driver", "_volume_size"))
+        ):
+            entity_registry.async_remove(entity.entity_id)
+            continue
+
+        # Check update entities
+        if not enable_updates and entity.domain == Platform.UPDATE:
+            entity_registry.async_remove(entity.entity_id)
+            continue
+
+        # Check buttons
+        if not enable_buttons and entity.domain == Platform.BUTTON:
+            entity_registry.async_remove(entity.entity_id)
+            continue
+
+        # Check switches
+        if not enable_switches and entity.domain == Platform.SWITCH:
+            entity_registry.async_remove(entity.entity_id)
+            continue
+
+        # Check container sensors
+        if not enable_container_sensors and entity.domain == Platform.SENSOR and (
+            any(
+                k in entity.unique_id
+                for k in ("_cpu_usage", "_memory_", "_state", "_started", "_image")
+            )
+        ):
+            entity_registry.async_remove(entity.entity_id)
+            continue
+
+        # Check if entity belongs to an excluded endpoint
+        if selected_endpoints is not None:
+            parts = entity.unique_id.split("_")
+            if (
+                len(parts) >= 2
+                and parts[1].isdigit()
+                and parts[1] not in valid_endpoint_ids
+            ):
+                entity_registry.async_remove(entity.entity_id)
+                continue
+
+    # 2. Clean up devices
+    devices = dr.async_entries_for_config_entry(device_registry, entry.entry_id)
+    for device in devices:
+        # Check volume devices
+        if not enable_volumes:
+            for domain, identifier in device.identifiers:
+                if domain == DOMAIN and len(identifier.split("_")[-1]) == 64:
+                    device_registry.async_remove_device(device.id)
+                    break
+
+        # Check devices belonging to excluded endpoints
+        if selected_endpoints is not None:
+            for domain, identifier in device.identifiers:
+                if domain == DOMAIN:
+                    parts = identifier.split("_")
+                    if (
+                        len(parts) >= 2
+                        and parts[1].isdigit()
+                        and parts[1] not in valid_endpoint_ids
+                    ):
+                        device_registry.async_remove_device(device.id)
+                        break
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:

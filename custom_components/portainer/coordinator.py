@@ -46,7 +46,13 @@ from homeassistant.helpers.device_registry import DeviceEntryType
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
-from .const import CONTAINER_STATE_ACTIONS, DEFAULT_NAME, DOMAIN
+from .const import (
+    CONF_ENABLE_VOLUMES,
+    CONF_ENDPOINTS,
+    CONTAINER_STATE_ACTIONS,
+    DEFAULT_NAME,
+    DOMAIN,
+)
 from .util import sanitize_container_name
 
 type PortainerConfigEntry = ConfigEntry[PortainerCoordinator]
@@ -249,6 +255,8 @@ class PortainerCoordinator(
 
         mapped_endpoints: dict[int, PortainerCoordinatorData] = {}
         timed_out_endpoints: set[int] = set()
+        selected_endpoints = self.config_entry.options.get(CONF_ENDPOINTS)
+        enable_volumes = self.config_entry.options.get(CONF_ENABLE_VOLUMES, False)
         for endpoint in endpoints:
             if endpoint.status == EndpointStatus.DOWN:
                 _LOGGER.debug(
@@ -258,22 +266,43 @@ class PortainerCoordinator(
                 )
                 continue
 
-            try:
-                (
-                    containers,
-                    docker_version,
-                    docker_info,
-                    docker_system_df,
-                    volumes,
-                ) = await asyncio.gather(
-                    self.portainer.get_containers(endpoint.id),
-                    self.portainer.docker_version(endpoint.id),
-                    self.portainer.docker_info(endpoint.id),
-                    self.portainer.docker_system_df(
-                        endpoint.id, data_type=DockerDFType.VOLUME, verbose=True
-                    ),
-                    self.portainer.get_volumes(endpoint.id),
+            if selected_endpoints and str(endpoint.id) not in selected_endpoints:
+                _LOGGER.debug(
+                    "Skipping excluded endpoint: %s (ID: %d)",
+                    endpoint.name,
+                    endpoint.id,
                 )
+                continue
+
+            try:
+                if enable_volumes:
+                    (
+                        containers,
+                        docker_version,
+                        docker_info,
+                        docker_system_df,
+                        volumes,
+                    ) = await asyncio.gather(
+                        self.portainer.get_containers(endpoint.id),
+                        self.portainer.docker_version(endpoint.id),
+                        self.portainer.docker_info(endpoint.id),
+                        self.portainer.docker_system_df(
+                            endpoint.id, data_type=DockerDFType.VOLUME, verbose=True
+                        ),
+                        self.portainer.get_volumes(endpoint.id),
+                    )
+                else:
+                    (
+                        containers,
+                        docker_version,
+                        docker_info,
+                    ) = await asyncio.gather(
+                        self.portainer.get_containers(endpoint.id),
+                        self.portainer.docker_version(endpoint.id),
+                        self.portainer.docker_info(endpoint.id),
+                    )
+                    docker_system_df = None
+                    volumes = []
 
                 stack_requests = [self.portainer.get_stacks(endpoint_id=endpoint.id)]
                 swarm_id = (
@@ -372,18 +401,19 @@ class PortainerCoordinator(
                         else None,
                     )
 
-                volume_usage_map = {
-                    item["Name"]: item
-                    for item in (docker_system_df.volume_disk_usage.items or [])
-                }
                 volume_map: dict[str, PortainerVolumeData] = {}
-                for volume in volumes:
-                    if item := volume_usage_map.get(volume.name):
-                        volume.usage_data = DockerVolumeUsageData(
-                            size=item["UsageData"]["Size"],
-                            ref_count=item["UsageData"]["RefCount"],
-                        )
-                    volume_map[volume.name] = PortainerVolumeData(volume=volume)
+                if enable_volumes and docker_system_df is not None:
+                    volume_usage_map = {
+                        item["Name"]: item
+                        for item in (docker_system_df.volume_disk_usage.items or [])
+                    }
+                    for volume in volumes:
+                        if item := volume_usage_map.get(volume.name):
+                            volume.usage_data = DockerVolumeUsageData(
+                                size=item["UsageData"]["Size"],
+                                ref_count=item["UsageData"]["RefCount"],
+                            )
+                        volume_map[volume.name] = PortainerVolumeData(volume=volume)
 
                 # Separately fetch stats for active containers
                 active_containers = [
@@ -777,8 +807,11 @@ class PortainerDockerDiskSpaceCoordinator(
         """Fetch Docker disk space data independently from Portainer API."""
         endpoints = await self.portainer.get_endpoints()
         results: dict[int, DockerSystemDF] = {}
+        selected_endpoints = self.config_entry.options.get(CONF_ENDPOINTS)
         for endpoint in endpoints:
             if endpoint.status == EndpointStatus.DOWN:
+                continue
+            if selected_endpoints and str(endpoint.id) not in selected_endpoints:
                 continue
             try:
                 results[endpoint.id] = await self.portainer.docker_system_df(

@@ -13,18 +13,35 @@ from pyportainer import (
 )
 from pyportainer.models.portainer import PortainerSystemStatus
 
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import (
+    ConfigEntry,
+    ConfigFlow,
+    ConfigFlowResult,
+    OptionsFlow,
+)
 from homeassistant.const import CONF_API_TOKEN, CONF_URL, CONF_VERIFY_SSL
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import (
     BooleanSelector,
+    SelectOptionDict,
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
     TextSelector,
     TextSelectorConfig,
     TextSelectorType,
 )
 
-from .const import DOMAIN
+from .const import (
+    CONF_ENDPOINTS,
+    CONF_ENABLE_BUTTONS,
+    CONF_ENABLE_CONTAINER_SENSORS,
+    CONF_ENABLE_SWITCHES,
+    CONF_ENABLE_UPDATES,
+    CONF_ENABLE_VOLUMES,
+    DOMAIN,
+)
 
 _LOGGER = logging.getLogger(__name__)
 STEP_USER_DATA_SCHEMA = probatio.Schema(
@@ -194,6 +211,104 @@ class PortainerConfigFlow(ConfigFlow, domain=DOMAIN):
                 suggested_values=user_input or suggested_values,
             ),
             errors=errors,
+        )
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
+        """Get the options flow for this handler."""
+        return PortainerOptionsFlowHandler(config_entry)
+
+
+class PortainerOptionsFlowHandler(OptionsFlow):
+    """Handle options flow for Portainer."""
+
+    def __init__(self, config_entry: ConfigEntry) -> None:
+        """Initialize options flow."""
+        self.config_entry = config_entry
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Manage the options."""
+        if user_input is not None:
+            return self.async_create_entry(title="", data=user_input)
+
+        endpoint_options: list[SelectOptionDict] = []
+        coordinator = getattr(self.config_entry, "runtime_data", None)
+        if coordinator and hasattr(coordinator, "portainer"):
+            try:
+                endpoints = await coordinator.portainer.get_endpoints()
+                for ep in endpoints:
+                    endpoint_options.append(
+                        SelectOptionDict(
+                            value=str(ep.id),
+                            label=f"{ep.name} (ID: {ep.id})",
+                        )
+                    )
+            except Exception as err:
+                _LOGGER.warning(
+                    "Could not fetch Portainer endpoints for options flow: %s", err
+                )
+
+        # Fallback if endpoints couldn't be fetched live via API
+        if not endpoint_options and coordinator and getattr(coordinator, "data", None):
+            for ep_id, ep_data in coordinator.data.items():
+                name = ep_data.name or f"Endpoint {ep_id}"
+                endpoint_options.append(
+                    SelectOptionDict(value=str(ep_id), label=f"{name} (ID: {ep_id})")
+                )
+
+        all_endpoint_ids = [opt["value"] for opt in endpoint_options]
+        current_endpoints = self.config_entry.options.get(
+            CONF_ENDPOINTS, all_endpoint_ids
+        )
+
+        schema_dict: dict[Any, Any] = {}
+        if endpoint_options:
+            schema_dict[
+                probatio.Optional(
+                    CONF_ENDPOINTS,
+                    default=current_endpoints,
+                )
+            ] = SelectSelector(
+                SelectSelectorConfig(
+                    options=endpoint_options,
+                    multiple=True,
+                    mode=SelectSelectorMode.LIST,
+                )
+            )
+
+        schema_dict.update(
+            {
+                probatio.Optional(
+                    CONF_ENABLE_VOLUMES,
+                    default=self.config_entry.options.get(CONF_ENABLE_VOLUMES, False),
+                ): BooleanSelector(),
+                probatio.Optional(
+                    CONF_ENABLE_UPDATES,
+                    default=self.config_entry.options.get(CONF_ENABLE_UPDATES, False),
+                ): BooleanSelector(),
+                probatio.Optional(
+                    CONF_ENABLE_CONTAINER_SENSORS,
+                    default=self.config_entry.options.get(
+                        CONF_ENABLE_CONTAINER_SENSORS, True
+                    ),
+                ): BooleanSelector(),
+                probatio.Optional(
+                    CONF_ENABLE_BUTTONS,
+                    default=self.config_entry.options.get(CONF_ENABLE_BUTTONS, True),
+                ): BooleanSelector(),
+                probatio.Optional(
+                    CONF_ENABLE_SWITCHES,
+                    default=self.config_entry.options.get(CONF_ENABLE_SWITCHES, True),
+                ): BooleanSelector(),
+            }
+        )
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=probatio.Schema(schema_dict),
         )
 
 

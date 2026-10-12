@@ -22,6 +22,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.util import dt as dt_util
 
+from .const import CONF_ENABLE_CONTAINER_SENSORS, CONF_ENABLE_VOLUMES
 from .coordinator import (
     PortainerConfigEntry,
     PortainerContainerData,
@@ -503,10 +504,15 @@ async def async_setup_entry(
             for entity_description in VOLUME_SENSORS
         )
 
+    enable_volumes = entry.options.get(CONF_ENABLE_VOLUMES, False)
+    enable_container_sensors = entry.options.get(CONF_ENABLE_CONTAINER_SENSORS, True)
+
     coordinator.new_endpoints_callbacks.append(_async_add_new_endpoints)
-    coordinator.new_containers_callbacks.append(_async_add_new_containers)
+    if enable_container_sensors:
+        coordinator.new_containers_callbacks.append(_async_add_new_containers)
     coordinator.new_stacks_callbacks.append(_async_add_new_stacks)
-    coordinator.new_volumes_callbacks.append(_async_add_new_volumes)
+    if enable_volumes:
+        coordinator.new_volumes_callbacks.append(_async_add_new_volumes)
 
     _async_add_new_endpoints(
         [
@@ -515,13 +521,14 @@ async def async_setup_entry(
             if endpoint.id in coordinator.known_endpoints
         ]
     )
-    _async_add_new_containers(
-        [
-            (endpoint, container)
-            for endpoint in coordinator.data.values()
-            for container in endpoint.containers.values()
-        ]
-    )
+    if enable_container_sensors:
+        _async_add_new_containers(
+            [
+                (endpoint, container)
+                for endpoint in coordinator.data.values()
+                for container in endpoint.containers.values()
+            ]
+        )
     _async_add_new_stacks(
         [
             (endpoint, stack)
@@ -529,13 +536,14 @@ async def async_setup_entry(
             for stack in endpoint.stacks.values()
         ]
     )
-    _async_add_new_volumes(
-        [
-            (endpoint, volume)
-            for endpoint in coordinator.data.values()
-            for volume in endpoint.volumes.values()
-        ]
-    )
+    if enable_volumes:
+        _async_add_new_volumes(
+            [
+                (endpoint, volume)
+                for endpoint in coordinator.data.values()
+                for volume in endpoint.volumes.values()
+            ]
+        )
 
 
 class PortainerContainerSensor(PortainerContainerEntity, SensorEntity):
