@@ -5,7 +5,12 @@ import logging
 from typing import TYPE_CHECKING
 
 from pyportainer import Portainer, PortainerImageWatcher
-from pyportainer.exceptions import PortainerError
+from pyportainer.exceptions import (
+    PortainerAuthenticationError,
+    PortainerConnectionError,
+    PortainerError,
+    PortainerTimeoutError,
+)
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
@@ -18,6 +23,7 @@ from homeassistant.const import (
     Platform,
 )
 from homeassistant.core import Event, HomeAssistant, callback
+from homeassistant.exceptions import ConfigEntryError, ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 import homeassistant.helpers.config_validation as cv
 import homeassistant.helpers.device_registry as dr
@@ -36,7 +42,11 @@ from .const import (
     CONF_ENDPOINTS,
     DOMAIN,
 )
-from .coordinator import PortainerCoordinator, PortainerDockerDiskSpaceCoordinator
+from .coordinator import (
+    PortainerCoordinator,
+    PortainerDockerDiskSpaceCoordinator,
+    PortainerSystemVersionCoordinator,
+)
 from .services import async_setup_services
 
 _PLATFORMS: list[Platform] = [
@@ -88,16 +98,24 @@ async def async_setup_entry(hass: HomeAssistant, entry: PortainerConfigEntry) ->
     )
     coordinator.docker_disk_space = docker_disk_space_coordinator
 
-    async def _defer_docker_disk_space_refresh(_: HomeAssistant) -> None:
+    system_version_coordinator = PortainerSystemVersionCoordinator(hass, entry, client)
+    coordinator.system_version = system_version_coordinator
+
+    async def _defer_initial_refreshes(_: HomeAssistant) -> None:
         """Defer the first refresh until Home Assistant has started."""
         hass.async_create_task(
             docker_disk_space_coordinator.async_refresh(),
             "portainer_docker_disk_space_initial_refresh",
         )
+        if entry.options.get(CONF_ENABLE_UPDATES, False):
+            hass.async_create_task(
+                system_version_coordinator.async_refresh(),
+                "portainer_system_version_initial_refresh",
+            )
 
-    # On lower-end hardware, the DF endpoint can take long
-    # Do not block the setup, but defer the first refresh until HA is fully started
-    entry.async_on_unload(async_at_started(hass, _defer_docker_disk_space_refresh))
+    # On lower-end hardware, the DF endpoint can take long, and the version check
+    # waits for GitHub. Do not block the setup, but defer both until HA has started
+    entry.async_on_unload(async_at_started(hass, _defer_initial_refreshes))
 
     entry.runtime_data = coordinator
 
@@ -190,7 +208,11 @@ def async_cleanup_excluded_entities(
         # Purge legacy v1.0.0 entities that lack endpoint_id in unique_id
         # Valid format: {entry_id}_{endpoint_id}_... where parts[1] is a digit
         parts = entity.unique_id.split("_")
-        if len(parts) >= 2 and not parts[1].isdigit():
+        if (
+            len(parts) >= 2
+            and not parts[1].isdigit()
+            and not entity.unique_id.endswith("_server_update")
+        ):
             removed_legacy_ids.add(entity.entity_id)
             entity_registry.async_remove(entity.entity_id)
             continue
@@ -364,9 +386,26 @@ async def async_migrate_entry(hass: HomeAssistant, entry: PortainerConfigEntry) 
         )
         try:
             system_status = await client.portainer_system_status()
-        except PortainerError:
-            _LOGGER.exception("Failed to fetch instance ID during migration")
-            return False
+        except PortainerAuthenticationError as err:
+            raise ConfigEntryError(
+                translation_domain=DOMAIN,
+                translation_key="invalid_auth",
+            ) from err
+        except PortainerConnectionError as err:
+            raise ConfigEntryNotReady(
+                translation_domain=DOMAIN,
+                translation_key="cannot_connect",
+            ) from err
+        except PortainerTimeoutError as err:
+            raise ConfigEntryNotReady(
+                translation_domain=DOMAIN,
+                translation_key="timeout_connect",
+            ) from err
+        except PortainerError as err:
+            raise ConfigEntryError(
+                translation_domain=DOMAIN,
+                translation_key="instance_id_failed",
+            ) from err
 
         hass.config_entries.async_update_entry(
             entry=entry,

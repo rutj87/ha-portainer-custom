@@ -20,25 +20,21 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Fetch Upstream Portainer Files
-        run: |
-          mkdir -p .upstream_tmp
-          curl -s https://api.github.com/repos/home-assistant/core/contents/homeassistant/components/portainer \
-            | jq -r '.[].name' | while read -r file; do
-              echo "Checking $file..."
-              curl -s -f -o ".upstream_tmp/$file" \
-                "https://raw.githubusercontent.com/home-assistant/core/dev/homeassistant/components/portainer/$file"
-            done
-
-      - name: Compare with Upstream
+      - name: Check Upstream Portainer Commits
         id: diff_check
         run: |
-          # Compare upstream tmp with local files (excluding our custom additions)
-          echo "Comparing upstream files..."
-          # If changes exist, note them
-          CHANGED=$(git diff --no-index .upstream_tmp custom_components/portainer || true)
-          if [ -n "$CHANGED" ]; then
+          CURRENT_SHA=$(tr -d '[:space:]' < .upstream_sha 2>/dev/null || echo "")
+          LATEST_SHA=$(curl -s "https://api.github.com/repos/home-assistant/core/commits?path=homeassistant/components/portainer&per_page=1" | jq -r '.[0].sha')
+          echo "Tracked upstream SHA: $CURRENT_SHA"
+          echo "Latest upstream SHA:  $LATEST_SHA"
+          if [ -n "$LATEST_SHA" ] && [ "$LATEST_SHA" != "null" ] && [ "$LATEST_SHA" != "$CURRENT_SHA" ]; then
             echo "has_changes=true" >> "$GITHUB_OUTPUT"
+            echo "$LATEST_SHA" > .upstream_sha
+            # Sync non-forked upstream files automatically
+            for file in diagnostics.py system_health.py quality_scale.yaml icons.json services.yaml; do
+              curl -s -f -o "custom_components/portainer/$file" \
+                "https://raw.githubusercontent.com/home-assistant/core/dev/homeassistant/components/portainer/$file" || true
+            done
           else
             echo "has_changes=false" >> "$GITHUB_OUTPUT"
           fi
