@@ -14,7 +14,7 @@
   ],
   "quality_scale": "platinum",
   "requirements": [
-    "pyportainer>=1.0.51"
+    "pyportainer>=1.0.50"
   ],
   "version": "1.0.8"
 }
