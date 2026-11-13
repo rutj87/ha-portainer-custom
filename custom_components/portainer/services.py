@@ -14,6 +14,10 @@ from homeassistant.helpers import (
     service,
 )
 
+# Compatibility fallback for older HA test environments
+if not hasattr(dr, "AnyDeviceEntry"):
+    dr.AnyDeviceEntry = dr.DeviceEntry  # type: ignore[attr-defined]
+
 from .const import DOMAIN
 from .coordinator import PortainerConfigEntry
 

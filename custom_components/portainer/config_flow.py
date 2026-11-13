@@ -84,6 +84,7 @@ class PortainerConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Portainer."""
 
     VERSION = 5
+    MINOR_VERSION = 3
 
     def __init__(self) -> None:
         """Initialize config flow."""

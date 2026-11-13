@@ -27,7 +27,10 @@ from homeassistant.exceptions import ConfigEntryError, ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 import homeassistant.helpers.config_validation as cv
 import homeassistant.helpers.device_registry as dr
-from homeassistant.helpers.device_registry import AnyDeviceEntry
+try:
+    from homeassistant.helpers.device_registry import AnyDeviceEntry
+except ImportError:
+    from homeassistant.helpers.device_registry import DeviceEntry as AnyDeviceEntry  # type: ignore[attr-defined]
 import homeassistant.helpers.entity_registry as er
 from homeassistant.helpers.start import async_at_started
 from homeassistant.helpers.typing import ConfigType
@@ -101,22 +104,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: PortainerConfigEntry) ->
     system_version_coordinator = PortainerSystemVersionCoordinator(hass, entry, client)
     coordinator.system_version = system_version_coordinator
 
-    async def _defer_initial_refreshes(_: HomeAssistant) -> None:
-        """Defer the first refresh until Home Assistant has started."""
-        hass.async_create_task(
-            docker_disk_space_coordinator.async_refresh(),
-            "portainer_docker_disk_space_initial_refresh",
-        )
-        if entry.options.get(CONF_ENABLE_UPDATES, False):
-            hass.async_create_task(
-                system_version_coordinator.async_refresh(),
-                "portainer_system_version_initial_refresh",
-            )
-
-    # On lower-end hardware, the DF endpoint can take long, and the version check
-    # waits for GitHub. Do not block the setup, but defer both until HA has started
-    entry.async_on_unload(async_at_started(hass, _defer_initial_refreshes))
-
     entry.runtime_data = coordinator
 
     # Register the endpoint and stack devices up front so that container, stack and
@@ -139,6 +126,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: PortainerConfigEntry) ->
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
     await hass.config_entries.async_forward_entry_setups(entry, _PLATFORMS)
+
+    async def _defer_initial_refreshes(_: HomeAssistant) -> None:
+        """Defer the first refresh until Home Assistant has started."""
+        hass.async_create_task(
+            docker_disk_space_coordinator.async_refresh(),
+            "portainer_docker_disk_space_initial_refresh",
+        )
+        if entry.options.get(CONF_ENABLE_UPDATES, False):
+            hass.async_create_task(
+                system_version_coordinator.async_refresh(),
+                "portainer_system_version_initial_refresh",
+            )
+
+    # On lower-end hardware, the DF endpoint can take long, and the version check
+    # waits for GitHub. Do not block the setup, but defer both until HA has started.
+    # Registered after the platforms, so the DF refresh sees the enabled entities.
+    entry.async_on_unload(async_at_started(hass, _defer_initial_refreshes))
 
     if entry.options.get(CONF_ENABLE_UPDATES, False):
         @callback
@@ -413,7 +417,39 @@ async def async_migrate_entry(hass: HomeAssistant, entry: PortainerConfigEntry) 
             version=5,
         )
 
+    if entry.minor_version < 3:
+        _async_disable_disk_space_sensors(hass, entry)
+        hass.config_entries.async_update_entry(entry=entry, minor_version=3)
+
     return True
+
+
+# Fixed at the sensors that existed when they became opt-in.
+_DISK_SPACE_TRANSLATION_KEYS = {
+    "container_disk_usage_reclaimable",
+    "container_disk_usage_total_size",
+    "image_disk_usage_reclaimable",
+    "image_disk_usage_total_size",
+    "volume_disk_usage_total_size",
+    "volume_size",
+}
+
+
+@callback
+def _async_disable_disk_space_sensors(
+    hass: HomeAssistant, entry: PortainerConfigEntry
+) -> None:
+    """Disable the disk space sensors, which became opt-in as Docker computes them slowly."""
+    entity_registry = er.async_get(hass)
+    for reg_entry in er.async_entries_for_config_entry(entity_registry, entry.entry_id):
+        if (
+            reg_entry.domain == Platform.SENSOR
+            and reg_entry.translation_key in _DISK_SPACE_TRANSLATION_KEYS
+            and reg_entry.disabled_by in (None, er.RegistryEntryDisabler.DEVICE)
+        ):
+            entity_registry.async_update_entity(
+                reg_entry.entity_id, disabled_by=er.RegistryEntryDisabler.INTEGRATION
+            )
 
 
 async def async_remove_config_entry_device(

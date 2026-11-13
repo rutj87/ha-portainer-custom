@@ -30,7 +30,7 @@ async def test_full_config_flow_with_options_step(hass, mock_portainer_client):
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {
-            CONF_URL: "http://192.168.86.107:9001",
+            CONF_URL: "http://192.0.2.10:9001",
             CONF_API_TOKEN: "valid-token-secret",
             CONF_VERIFY_SSL: False,
         },
@@ -52,9 +52,9 @@ async def test_full_config_flow_with_options_step(hass, mock_portainer_client):
         },
     )
     assert result["type"] == "create_entry"
-    assert result["title"] == "http://192.168.86.107:9001"
+    assert result["title"] == "http://192.0.2.10:9001"
     assert result["data"] == {
-        CONF_URL: "http://192.168.86.107:9001",
+        CONF_URL: "http://192.0.2.10:9001",
         CONF_API_TOKEN: "valid-token-secret",
         CONF_VERIFY_SSL: False,
     }
@@ -75,7 +75,7 @@ async def test_options_flow_handler(hass, mock_portainer_client):
         domain=DOMAIN,
         unique_id="test-instance-12345",
         data={
-            CONF_URL: "http://192.168.86.107:9001",
+            CONF_URL: "http://192.0.2.10:9001",
             CONF_API_TOKEN: "valid-token-secret",
             CONF_VERIFY_SSL: False,
         },

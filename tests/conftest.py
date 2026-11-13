@@ -26,17 +26,17 @@ def mock_portainer_client():
         )
         endpoint_1 = Endpoint(
             id=7,
-            name="Omada Pi",
+            name="Endpoint 1",
             status=1,
             type=1,
-            url="tcp://192.168.86.107:9001",
+            url="tcp://192.0.2.10:9001",
         )
         endpoint_2 = Endpoint(
             id=8,
-            name="Ubuntu VM",
+            name="Endpoint 2",
             status=1,
             type=1,
-            url="tcp://192.168.86.108:9001",
+            url="tcp://192.0.2.11:9001",
         )
         client.get_endpoints.return_value = [endpoint_1, endpoint_2]
         mock_client_cls.return_value = client
