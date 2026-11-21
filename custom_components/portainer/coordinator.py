@@ -44,7 +44,16 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 import homeassistant.helpers.device_registry as dr
 from homeassistant.helpers.device_registry import DeviceEntryType
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+try:
+    from homeassistant.helpers.update_coordinator import (
+        DataUpdateCoordinator,
+        UpdateFailedUnreachable,
+    )
+except ImportError:
+    from homeassistant.helpers.update_coordinator import (
+        DataUpdateCoordinator,
+        UpdateFailed as UpdateFailedUnreachable,
+    )
 from homeassistant.util import dt as dt_util
 
 from .const import (
@@ -178,12 +187,12 @@ class PortainerBaseCoordinator[_DataT](DataUpdateCoordinator[_DataT]):
                 translation_key="invalid_auth",
             ) from err
         except PortainerConnectionError as err:
-            raise UpdateFailed(
+            raise UpdateFailedUnreachable(
                 translation_domain=DOMAIN,
                 translation_key="cannot_connect",
             ) from err
         except PortainerTimeoutError as err:
-            raise UpdateFailed(
+            raise UpdateFailedUnreachable(
                 translation_domain=DOMAIN,
                 translation_key="timeout_connect",
             ) from err
@@ -203,12 +212,12 @@ class PortainerBaseCoordinator[_DataT](DataUpdateCoordinator[_DataT]):
                 translation_key="invalid_auth",
             ) from err
         except PortainerConnectionError as err:
-            raise UpdateFailed(
+            raise UpdateFailedUnreachable(
                 translation_domain=DOMAIN,
                 translation_key="cannot_connect",
             ) from err
         except PortainerTimeoutError as err:
-            raise UpdateFailed(
+            raise UpdateFailedUnreachable(
                 translation_domain=DOMAIN,
                 translation_key="timeout_connect",
             ) from err
@@ -281,7 +290,7 @@ class PortainerCoordinator(
                 translation_key="invalid_auth",
             ) from err
         except PortainerConnectionError as err:
-            raise UpdateFailed(
+            raise UpdateFailedUnreachable(
                 translation_domain=DOMAIN,
                 translation_key="cannot_connect",
             ) from err
